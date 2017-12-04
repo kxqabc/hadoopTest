@@ -16,7 +16,7 @@ import org.apache.hadoop.util.GenericOptionsParser;
 import java.io.IOException;
 
 public class MatrixTranspost {
-    //矩阵中某个元素的表示方法：行号，列号，值
+    //矩阵中某个元素的表示方法：行号，列号，值；也即：前两个是坐标，第三个是值
     private static int matrix1Row = 3;   //矩阵1的行数
     private static int matrix1Col = 3;   //矩阵1的列数
     private static int matrix2Row = 3;   //矩阵2的行数
@@ -40,17 +40,17 @@ public class MatrixTranspost {
             if (value==null||"".equals(value))
                 return;
             String[] elements = value.toString().split(",");
-
+            if (elements.length<3)
+                return;
             if (fileName.equals("matrix1")){
-//                if (elements.length<matrix1Col)
-//                    return;
+                //将矩阵中的一个元素复制多份（份数=矩阵1的列），因为这些值参与了多次（份数=矩阵1的列）与矩阵2对应元素的乘法；
+                //map输出的键为该元素参与计算的“输出矩阵”的坐标，map输出的值为：矩阵名称，元素所在矩阵1中的列号，元素值
                 for (int j=1;j<=matrix1Col;j++){
+                    //map的key=[行号，矩阵1的列的全部值]
                     System.out.println("mapper:"+"matrix1,"+"key="+elements[0]+","+j+"  value="+elements[1]+","+elements[2]);
                     context.write(new Text(elements[0]+","+j),new Text("matrix1,"+elements[1]+","+elements[2]));    // val=matrix1,column,value
                 }
             }else if (fileName.equals("matrix2")){
-//                if (elements.length<matrix2Col)
-//                    return;
                 for (int i=1;i<=matrix2Row;i++){
                     System.out.println("mapper:"+"matrix2,"+"key="+i+","+elements[1]+"  value="+elements[0]+","+elements[2]);
                     context.write(new Text(i+","+elements[1]),new Text("matrix2,"+elements[0]+","+elements[2]));
@@ -66,34 +66,42 @@ public class MatrixTranspost {
                 throws IOException, InterruptedException {
             if (matrix1Col!=matrix2Row)
                 return;
-            int[] rowArray = new int[matrix1Col];
-            int[] colArray = new int[matrix2Row];
+            int[] rowArray = new int[matrix1Col];   //用于保存结果矩阵key所代表的坐标（row,col）所用到的来自矩阵1中的值，元素在矩阵中的列数与数组的下标相对应（row-1=index）
+            int[] colArray = new int[matrix2Row];   //用于保存结果矩阵key所代表的坐标（row,col）所用到的来自矩阵2中的值，元素在矩阵中的列数与数组的下标相对应（col-1=index）
             if (values==null||"".equals(values))
                 return;
-            //判断key代表的位置是否在结果矩阵中
+            //判断key代表的位置是否在“结果矩阵”中
             if (!isInResultMatrix(key))
                 return;
 
             for (Text val:values){
                 System.out.println("reducer:key="+key.toString()+" value="+val);
+                //第一位是所属的矩阵名称，第二位是行号（来自矩阵1）或者列号（来自矩阵2），第三位是元素值
                 String[] valStrs = val.toString().split(",");
-//                if (valStrs.length<3)
-//                    return;
+                if (valStrs.length<3)
+                    return;
                 if ("matrix1".equals(valStrs[0])){
-                    int rowArrayIndex = Integer.parseInt(valStrs[1].toString())-1;    //获取该值的列数
+                    int rowArrayIndex = Integer.parseInt(valStrs[1].toString())-1;    //获取该值的列数（矩阵从1开始，数组从0开始）
                     rowArray[rowArrayIndex] = Integer.parseInt(valStrs[2]);     //将数值根据列数放到相应的数组中
                 }else if ("matrix2".equals(valStrs[0])){
                     int colArrayIndex = Integer.parseInt(valStrs[1].toString())-1;
                     colArray[colArrayIndex] = Integer.parseInt(valStrs[2].toString());
                 }
             }
+            //计算乘积和
             int sum = 0;
             for (int i=0;i<matrix1Col;i++){
                 sum = sum + rowArray[i]*colArray[i];
             }
+            //输出结果矩阵中key坐标的值
             context.write(key,new IntWritable(sum));
         }
 
+        /**
+         * 根据坐标判断该点是否在结果矩阵中，减少不必要的计算
+         * @param position
+         * @return
+         */
         public boolean isInResultMatrix(Text position){
             if (position==null||"".equals(position))
                 return false;
@@ -121,8 +129,9 @@ public class MatrixTranspost {
         Job job = new Job(conf, "matrix multi");
         job.setJarByClass(MatrixTranspost.class);
         job.setMapperClass(SplitAndTranspostMapper.class);
-
+        //缺省combine
         job.setReducerClass(InnerProductReduce.class);
+        //单独设置map输出，因为map和reduce输出不同，不能使用:job.setOutputKeyClass();
         job.setMapOutputKeyClass(Text.class);
         job.setMapOutputValueClass(Text.class);
 
