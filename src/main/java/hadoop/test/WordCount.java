@@ -24,10 +24,12 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Text;
+
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.input.FileSplit;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.util.GenericOptionsParser;
 
@@ -35,12 +37,23 @@ public class WordCount {
 
   public static class TokenizerMapper 
        extends Mapper<Object, Text, Text, IntWritable>{
-    
+
+    private String fileName;
     private final static IntWritable one = new IntWritable(1);
     private Text word = new Text();
-      
+
+    @Override
+    protected void setup(Context context) throws IOException, InterruptedException {
+      super.setup(context);
+      FileSplit split = (FileSplit) context.getInputSplit();
+      String path = split.getPath().toString();
+      fileName = split.getPath().getName();
+      System.out.println("path:"+path+","+" fileName:"+fileName);
+    }
+
     public void map(Object key, Text value, Context context
                     ) throws IOException, InterruptedException {
+      System.out.println(fileName+": key="+key.toString()+" val="+value.toString());
       StringTokenizer itr = new StringTokenizer(value.toString());
       while (itr.hasMoreTokens()) {
         word.set(itr.nextToken());
